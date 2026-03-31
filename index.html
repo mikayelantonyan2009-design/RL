@@ -2,10 +2,9 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Rocket Car Arena</title>
+<title>3D Rocket Car Arena</title>
 <style>
-body { margin:0; overflow:hidden; background:#111; }
-canvas { display:block; }
+body { margin:0; overflow:hidden; background:#0b0f1a; }
 #ui {
  position:absolute; top:10px; left:50%; transform:translateX(-50%);
  color:white; font-family:Arial; font-size:20px;
@@ -14,124 +13,145 @@ canvas { display:block; }
 </head>
 <body>
 <div id="ui">Score: 0 - 0</div>
-<canvas id="game"></canvas>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.158.0/build/three.min.js"></script>
+
 <script>
-const canvas = document.getElementById('game');
-const ctx = canvas.getContext('2d');
-canvas.width = window.innerWidth;
-canvas.height = window.innerHeight;
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
+const renderer = new THREE.WebGLRenderer();
+renderer.setSize(window.innerWidth, window.innerHeight);
+document.body.appendChild(renderer.domElement);
+
+// Lighting
+const light = new THREE.DirectionalLight(0xffffff, 1);
+light.position.set(10,20,10);
+scene.add(light);
+scene.add(new THREE.AmbientLight(0x404040));
+
+// Field
+const fieldGeo = new THREE.PlaneGeometry(200, 120);
+const fieldMat = new THREE.MeshStandardMaterial({color:0x1e7f3f});
+const field = new THREE.Mesh(fieldGeo, fieldMat);
+field.rotation.x = -Math.PI/2;
+scene.add(field);
+
+// Goals
+function createGoal(x) {
+ const group = new THREE.Group();
+ const postMat = new THREE.MeshStandardMaterial({color:0xffffff});
+
+ const post1 = new THREE.Mesh(new THREE.BoxGeometry(1,10,1), postMat);
+ const post2 = post1.clone();
+ const crossbar = new THREE.Mesh(new THREE.BoxGeometry(10,1,1), postMat);
+
+ post1.position.set(x,5,-5);
+ post2.position.set(x,5,5);
+ crossbar.position.set(x,10,0);
+
+ group.add(post1, post2, crossbar);
+ return group;
+}
+
+const goalLeft = createGoal(-95);
+const goalRight = createGoal(95);
+scene.add(goalLeft);
+scene.add(goalRight);
+
+// Ball
+const ballGeo = new THREE.SphereGeometry(2,16,16);
+const ballMat = new THREE.MeshStandardMaterial({color:0xffffff});
+const ball = new THREE.Mesh(ballGeo, ballMat);
+scene.add(ball);
+let ballVel = new THREE.Vector3();
+
+// Car
+const carGeo = new THREE.BoxGeometry(4,2,6);
+const carMat = new THREE.MeshStandardMaterial({color:0x00ffff});
+const car = new THREE.Mesh(carGeo, carMat);
+car.position.y = 1;
+scene.add(car);
+
+let carVel = new THREE.Vector3();
+let angle = 0;
+
+// Controls
+const keys = {};
+document.addEventListener('keydown', e=>keys[e.key]=true);
+document.addEventListener('keyup', e=>keys[e.key]=false);
 
 let score = [0,0];
 
-const keys = {};
-document.addEventListener('keydown', e => keys[e.key]=true);
-document.addEventListener('keyup', e => keys[e.key]=false);
-
-class Car {
- constructor(x,y,color) {
-  this.x=x; this.y=y;
-  this.vx=0; this.vy=0;
-  this.angle=0;
-  this.color=color;
- }
- update() {
-  if(keys['ArrowUp']) {
-   this.vx += Math.cos(this.angle)*0.2;
-   this.vy += Math.sin(this.angle)*0.2;
-  }
-  if(keys['ArrowLeft']) this.angle -= 0.05;
-  if(keys['ArrowRight']) this.angle += 0.05;
-  if(keys[' ']) { // boost
-   this.vx += Math.cos(this.angle)*0.4;
-   this.vy += Math.sin(this.angle)*0.4;
-  }
-
-  this.x += this.vx;
-  this.y += this.vy;
-
-  this.vx *= 0.98;
-  this.vy *= 0.98;
-
-  // walls
-  if(this.x<0||this.x>canvas.width) this.vx*=-1;
-  if(this.y<0||this.y>canvas.height) this.vy*=-1;
- }
- draw() {
-  ctx.save();
-  ctx.translate(this.x,this.y);
-  ctx.rotate(this.angle);
-  ctx.fillStyle=this.color;
-  ctx.fillRect(-15,-10,30,20);
-  ctx.restore();
- }
-}
-
-class Ball {
- constructor() {
-  this.x=canvas.width/2;
-  this.y=canvas.height/2;
-  this.vx=0; this.vy=0;
-  this.r=15;
- }
- update() {
-  this.x+=this.vx;
-  this.y+=this.vy;
-  this.vx*=0.995;
-  this.vy*=0.995;
-
-  // bounce walls
-  if(this.x<this.r||this.x>canvas.width-this.r) this.vx*=-1;
-  if(this.y<this.r||this.y>canvas.height-this.r) this.vy*=-1;
-
-  // goals
-  if(this.x<10) { score[1]++; reset(); }
-  if(this.x>canvas.width-10) { score[0]++; reset(); }
- }
- draw() {
-  ctx.beginPath();
-  ctx.arc(this.x,this.y,this.r,0,Math.PI*2);
-  ctx.fillStyle='white';
-  ctx.fill();
- }
-}
-
-function collide(car, ball) {
- const dx = ball.x - car.x;
- const dy = ball.y - car.y;
- const dist = Math.hypot(dx,dy);
- if(dist < ball.r + 20) {
-  ball.vx = dx * 0.1 + car.vx;
-  ball.vy = dy * 0.1 + car.vy;
- }
-}
-
-const player = new Car(200,canvas.height/2,'cyan');
-const ball = new Ball();
-
 function reset() {
- ball.x = canvas.width/2;
- ball.y = canvas.height/2;
- ball.vx = ball.vy = 0;
- player.x = 200;
- player.y = canvas.height/2;
+ ball.position.set(0,2,0);
+ ballVel.set(0,0,0);
+ car.position.set(-50,1,0);
+ carVel.set(0,0,0);
 }
+reset();
 
-function loop() {
- ctx.clearRect(0,0,canvas.width,canvas.height);
+function update() {
+ // Car movement
+ if(keys['ArrowUp']) {
+  carVel.x += Math.sin(angle)*0.1;
+  carVel.z += Math.cos(angle)*0.1;
+ }
+ if(keys['ArrowLeft']) angle += 0.04;
+ if(keys['ArrowRight']) angle -= 0.04;
+ if(keys[' ']) {
+  carVel.x += Math.sin(angle)*0.2;
+  carVel.z += Math.cos(angle)*0.2;
+ }
 
- player.update();
- ball.update();
- collide(player, ball);
+ car.position.x += carVel.x;
+ car.position.z += carVel.z;
+ car.rotation.y = angle;
 
- player.draw();
- ball.draw();
+ carVel.multiplyScalar(0.98);
+
+ // Ball physics
+ ball.position.add(ballVel);
+ ballVel.multiplyScalar(0.99);
+
+ // Collision
+ const dist = car.position.distanceTo(ball.position);
+ if(dist < 5) {
+  const dir = ball.position.clone().sub(car.position).normalize();
+  ballVel.add(dir.multiplyScalar(0.5)).add(carVel);
+ }
+
+ // Bounds
+ if(Math.abs(ball.position.z) > 58) ballVel.z *= -1;
+
+ // Goals
+ if(ball.position.x < -100 && Math.abs(ball.position.z) < 10) {
+  score[1]++;
+  reset();
+ }
+ if(ball.position.x > 100 && Math.abs(ball.position.z) < 10) {
+  score[0]++;
+  reset();
+ }
 
  document.getElementById('ui').innerText = `Score: ${score[0]} - ${score[1]}`;
-
- requestAnimationFrame(loop);
 }
 
-loop();
+// Camera follow
+function updateCamera() {
+ camera.position.x = car.position.x - 20*Math.sin(angle);
+ camera.position.z = car.position.z - 20*Math.cos(angle);
+ camera.position.y = 15;
+ camera.lookAt(car.position);
+}
+
+function animate() {
+ requestAnimationFrame(animate);
+ update();
+ updateCamera();
+ renderer.render(scene, camera);
+}
+
+animate();
 </script>
 </body>
 </html>
