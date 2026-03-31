@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>3D Rocket Car Arena</title>
+<title>3D Rocket Car Arena with AI</title>
 <style>
 body { margin:0; overflow:hidden; background:#0b0f1a; }
 #ui {
@@ -36,14 +36,29 @@ const field = new THREE.Mesh(fieldGeo, fieldMat);
 field.rotation.x = -Math.PI/2;
 scene.add(field);
 
-// Goals
+// Walls
+const wallMat = new THREE.MeshStandardMaterial({color:0x444444});
+const wallLeft = new THREE.Mesh(new THREE.BoxGeometry(2,10,120), wallMat);
+wallLeft.position.set(-101,5,0);
+scene.add(wallLeft);
+const wallRight = wallLeft.clone();
+wallRight.position.set(101,5,0);
+scene.add(wallRight);
+const wallTop = new THREE.Mesh(new THREE.BoxGeometry(200,10,2), wallMat);
+wallTop.position.set(0,5,-61);
+scene.add(wallTop);
+const wallBottom = wallTop.clone();
+wallBottom.position.set(0,5,61);
+scene.add(wallBottom);
+
+// Goals with crossbar
 function createGoal(x) {
  const group = new THREE.Group();
  const postMat = new THREE.MeshStandardMaterial({color:0xffffff});
 
  const post1 = new THREE.Mesh(new THREE.BoxGeometry(1,10,1), postMat);
  const post2 = post1.clone();
- const crossbar = new THREE.Mesh(new THREE.BoxGeometry(10,1,1), postMat);
+ const crossbar = new THREE.Mesh(new THREE.BoxGeometry(1,1,10), postMat);
 
  post1.position.set(x,5,-5);
  post2.position.set(x,5,5);
@@ -65,15 +80,22 @@ const ball = new THREE.Mesh(ballGeo, ballMat);
 scene.add(ball);
 let ballVel = new THREE.Vector3();
 
-// Car
+// Cars
 const carGeo = new THREE.BoxGeometry(4,2,6);
-const carMat = new THREE.MeshStandardMaterial({color:0x00ffff});
-const car = new THREE.Mesh(carGeo, carMat);
-car.position.y = 1;
-scene.add(car);
+const playerMat = new THREE.MeshStandardMaterial({color:0x00ffff});
+const aiMat = new THREE.MeshStandardMaterial({color:0xff5555});
 
-let carVel = new THREE.Vector3();
-let angle = 0;
+const player = new THREE.Mesh(carGeo, playerMat);
+player.position.set(-50,1,0);
+scene.add(player);
+let playerVel = new THREE.Vector3();
+let playerAngle = 0;
+
+const ai = new THREE.Mesh(carGeo, aiMat);
+ai.position.set(50,1,0);
+scene.add(ai);
+let aiVel = new THREE.Vector3();
+let aiAngle = Math.PI;
 
 // Controls
 const keys = {};
@@ -85,69 +107,85 @@ let score = [0,0];
 function reset() {
  ball.position.set(0,2,0);
  ballVel.set(0,0,0);
- car.position.set(-50,1,0);
- carVel.set(0,0,0);
+ player.position.set(-50,1,0);
+ playerVel.set(0,0,0);
+ ai.position.set(50,1,0);
+ aiVel.set(0,0,0);
 }
 reset();
 
-function update() {
- // Car movement
+function updateCarControls() {
  if(keys['ArrowUp']) {
-  carVel.x += Math.sin(angle)*0.1;
-  carVel.z += Math.cos(angle)*0.1;
+  playerVel.x += Math.sin(playerAngle)*0.1;
+  playerVel.z += Math.cos(playerAngle)*0.1;
  }
- if(keys['ArrowLeft']) angle += 0.04;
- if(keys['ArrowRight']) angle -= 0.04;
+ if(keys['ArrowLeft']) playerAngle += 0.04;
+ if(keys['ArrowRight']) playerAngle -= 0.04;
  if(keys[' ']) {
-  carVel.x += Math.sin(angle)*0.2;
-  carVel.z += Math.cos(angle)*0.2;
+  playerVel.x += Math.sin(playerAngle)*0.2;
+  playerVel.z += Math.cos(playerAngle)*0.2;
  }
-
- car.position.x += carVel.x;
- car.position.z += carVel.z;
- car.rotation.y = angle;
-
- carVel.multiplyScalar(0.98);
-
- // Ball physics
- ball.position.add(ballVel);
- ballVel.multiplyScalar(0.99);
-
- // Collision
- const dist = car.position.distanceTo(ball.position);
- if(dist < 5) {
-  const dir = ball.position.clone().sub(car.position).normalize();
-  ballVel.add(dir.multiplyScalar(0.5)).add(carVel);
- }
-
- // Bounds
- if(Math.abs(ball.position.z) > 58) ballVel.z *= -1;
-
- // Goals
- if(ball.position.x < -100 && Math.abs(ball.position.z) < 10) {
-  score[1]++;
-  reset();
- }
- if(ball.position.x > 100 && Math.abs(ball.position.z) < 10) {
-  score[0]++;
-  reset();
- }
-
- document.getElementById('ui').innerText = `Score: ${score[0]} - ${score[1]}`;
+ player.position.add(playerVel);
+ player.rotation.y = playerAngle;
+ playerVel.multiplyScalar(0.85); // friction
 }
 
-// Camera follow
+function updateAI() {
+ const dir = ball.position.clone().sub(ai.position);
+ const distance = dir.length();
+ dir.normalize();
+ aiAngle = Math.atan2(dir.x, dir.z);
+ ai.rotation.y = aiAngle;
+
+ if(distance > 3) {
+  aiVel.x += dir.x*0.08;
+  aiVel.z += dir.z*0.08;
+ }
+ ai.position.add(aiVel);
+ aiVel.multiplyScalar(0.85);
+}
+
+function updateBall() {
+ ball.position.add(ballVel);
+ ballVel.multiplyScalar(0.95);
+
+ // collision with player
+ const distP = player.position.distanceTo(ball.position);
+ if(distP < 5) {
+  const dir = ball.position.clone().sub(player.position).normalize();
+  ballVel.add(dir.multiplyScalar(0.5)).add(playerVel);
+ }
+
+ // collision with AI
+ const distAI = ai.position.distanceTo(ball.position);
+ if(distAI < 5) {
+  const dir = ball.position.clone().sub(ai.position).normalize();
+  ballVel.add(dir.multiplyScalar(0.5)).add(aiVel);
+ }
+
+ // walls
+ if(ball.position.x < -100+2 || ball.position.x > 100-2) ballVel.x*=-1;
+ if(ball.position.z < -60+2 || ball.position.z > 60-2) ballVel.z*=-1;
+
+ // goals
+ if(ball.position.x < -100 && Math.abs(ball.position.z)<5) { score[1]++; reset(); }
+ if(ball.position.x > 100 && Math.abs(ball.position.z)<5) { score[0]++; reset(); }
+}
+
 function updateCamera() {
- camera.position.x = car.position.x - 20*Math.sin(angle);
- camera.position.z = car.position.z - 20*Math.cos(angle);
+ camera.position.x = player.position.x - 20*Math.sin(playerAngle);
+ camera.position.z = player.position.z - 20*Math.cos(playerAngle);
  camera.position.y = 15;
- camera.lookAt(car.position);
+ camera.lookAt(player.position);
 }
 
 function animate() {
  requestAnimationFrame(animate);
- update();
+ updateCarControls();
+ updateAI();
+ updateBall();
  updateCamera();
+ document.getElementById('ui').innerText = `Score: ${score[0]} - ${score[1]}`;
  renderer.render(scene, camera);
 }
 
