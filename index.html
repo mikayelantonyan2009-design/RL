@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>3D Rocket Car Arena with AI</title>
+<title>3D Rocket Car Arena with Jumping</title>
 <style>
 body { margin:0; overflow:hidden; background:#0b0f1a; }
 #ui {
@@ -55,19 +55,15 @@ scene.add(wallBottom);
 function createGoal(x) {
  const group = new THREE.Group();
  const postMat = new THREE.MeshStandardMaterial({color:0xffffff});
-
  const post1 = new THREE.Mesh(new THREE.BoxGeometry(1,10,1), postMat);
  const post2 = post1.clone();
  const crossbar = new THREE.Mesh(new THREE.BoxGeometry(1,1,10), postMat);
-
  post1.position.set(x,5,-5);
  post2.position.set(x,5,5);
  crossbar.position.set(x,10,0);
-
  group.add(post1, post2, crossbar);
  return group;
 }
-
 const goalLeft = createGoal(-95);
 const goalRight = createGoal(95);
 scene.add(goalLeft);
@@ -86,16 +82,16 @@ const playerMat = new THREE.MeshStandardMaterial({color:0x00ffff});
 const aiMat = new THREE.MeshStandardMaterial({color:0xff5555});
 
 const player = new THREE.Mesh(carGeo, playerMat);
-player.position.set(-50,1,0);
 scene.add(player);
 let playerVel = new THREE.Vector3();
 let playerAngle = 0;
+let playerYVel = 0;
 
 const ai = new THREE.Mesh(carGeo, aiMat);
-ai.position.set(50,1,0);
 scene.add(ai);
 let aiVel = new THREE.Vector3();
-let aiAngle = Math.PI;
+let aiAngle = 0;
+let aiYVel = 0;
 
 // Controls
 const keys = {};
@@ -107,30 +103,47 @@ let score = [0,0];
 function reset() {
  ball.position.set(0,2,0);
  ballVel.set(0,0,0);
- player.position.set(-50,1,0);
+
+ player.position.set(-20,1,0);
+ playerAngle = 0;
  playerVel.set(0,0,0);
- ai.position.set(50,1,0);
+ playerYVel = 0;
+
+ ai.position.set(20,1,0);
+ aiAngle = Math.PI;
  aiVel.set(0,0,0);
+ aiYVel = 0;
 }
 reset();
 
-function updateCarControls() {
+function updatePlayer() {
+ // Forward/back
  if(keys['ArrowUp']) {
   playerVel.x += Math.sin(playerAngle)*0.1;
   playerVel.z += Math.cos(playerAngle)*0.1;
  }
+ if(keys['ArrowDown']) {
+  playerVel.x -= Math.sin(playerAngle)*0.08;
+  playerVel.z -= Math.cos(playerAngle)*0.08;
+ }
  if(keys['ArrowLeft']) playerAngle += 0.04;
  if(keys['ArrowRight']) playerAngle -= 0.04;
+ // Jump
  if(keys[' ']) {
-  playerVel.x += Math.sin(playerAngle)*0.2;
-  playerVel.z += Math.cos(playerAngle)*0.2;
+  if(player.position.y <= 1.01) playerYVel = 0.3;
  }
- player.position.add(playerVel);
+ playerYVel -= 0.02; // gravity
+ player.position.y += playerYVel;
+ if(player.position.y < 1) { player.position.y=1; playerYVel=0; }
+
+ player.position.x += playerVel.x;
+ player.position.z += playerVel.z;
  player.rotation.y = playerAngle;
- playerVel.multiplyScalar(0.85); // friction
+ playerVel.multiplyScalar(0.85);
 }
 
 function updateAI() {
+ // Forward/back AI
  const dir = ball.position.clone().sub(ai.position);
  const distance = dir.length();
  dir.normalize();
@@ -141,6 +154,12 @@ function updateAI() {
   aiVel.x += dir.x*0.08;
   aiVel.z += dir.z*0.08;
  }
+ // Simple AI jump if ball is above AI
+ if(ball.position.y - ai.position.y > 2 && ai.position.y <= 1.01) aiYVel = 0.3;
+ aiYVel -= 0.02;
+ ai.position.y += aiYVel;
+ if(ai.position.y < 1) { ai.position.y=1; aiYVel=0; }
+
  ai.position.add(aiVel);
  aiVel.multiplyScalar(0.85);
 }
@@ -155,7 +174,6 @@ function updateBall() {
   const dir = ball.position.clone().sub(player.position).normalize();
   ballVel.add(dir.multiplyScalar(0.5)).add(playerVel);
  }
-
  // collision with AI
  const distAI = ai.position.distanceTo(ball.position);
  if(distAI < 5) {
@@ -170,6 +188,9 @@ function updateBall() {
  // goals
  if(ball.position.x < -100 && Math.abs(ball.position.z)<5) { score[1]++; reset(); }
  if(ball.position.x > 100 && Math.abs(ball.position.z)<5) { score[0]++; reset(); }
+
+ // prevent ball from falling below field
+ if(ball.position.y < 2) ball.position.y = 2;
 }
 
 function updateCamera() {
@@ -181,14 +202,13 @@ function updateCamera() {
 
 function animate() {
  requestAnimationFrame(animate);
- updateCarControls();
+ updatePlayer();
  updateAI();
  updateBall();
  updateCamera();
  document.getElementById('ui').innerText = `Score: ${score[0]} - ${score[1]}`;
  renderer.render(scene, camera);
 }
-
 animate();
 </script>
 </body>
